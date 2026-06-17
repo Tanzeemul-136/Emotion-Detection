@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Emotion Analytics Engine</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+    <div id="intro-loader">
+        <div class="animation-wrapper">
+            <div class="vector-line trace-top-1"></div>
+            <div class="vector-line trace-top-2"></div>
+            <div class="vector-line trace-top-3"></div>
+            
+            <div class="vector-line trace-bottom-1"></div>
+            <div class="vector-line trace-bottom-2"></div>
+            <div class="vector-line trace-bottom-3"></div>
+            
+            <div class="vector-line trace-left-1"></div>
+            <div class="vector-line trace-left-2"></div>
+            <div class="vector-line trace-left-3"></div>
+            
+            <div class="vector-line trace-right-1"></div>
+            <div class="vector-line trace-right-2"></div>
+            <div class="vector-line trace-right-3"></div>
+            
+            <div class="core-cluster">
+                <div class="cluster-node node-1"></div>
+                <div class="cluster-node node-2"></div>
+                <div class="cluster-node node-3"></div>
+                <div class="cluster-pulse"></div>
+            </div>
+            
+            <div class="loader-status">MAPPING HARDWARE TELEMETRY...</div>
+        </div>
+    </div>
+
+    <div class="dashboard">
+        <header>
+            <div class="brand-badge">COGNITIVE INTERACTION HUB</div>
+            <h1>Emotion Detection</h1>
+            <p>Real-time deep learning computer vision pipeline</p>
+        </header>
+        
+        <div class="main-content">
+            <div class="video-card">
+                <div class="card-header">
+                    <div class="status-badge">
+                        <span class="live-dot"></span> LIVE SYSTEM FEED
+                    </div>
+                </div>
+                <div class="video-container">
+                    <video id="webcam" autoplay playsinline muted></video>
+                    <canvas id="canvas" style="display:none;"></canvas>
+                </div>
+            </div>
+            
+            <div class="analytics-card">
+                <div class="card-header">
+                    <h3>CLASSIFICATION OUTPUT</h3>
+                </div>
+                <div id="emotion-emoji" class="emoji-display">⏳</div>
+                <div id="emotion-result">Initializing...</div>
+                
+                <div class="divider"></div>
+                
+                <div class="telemetry-log">
+                    <div class="log-row"><span>Framework State:</span> <strong class="neon-text-green">Active</strong></div>
+                    <div class="log-row"><span>Target Input:</span> <strong>48x48 Grayscale</strong></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const resultDiv = document.getElementById('emotion-result');
+        const emojiDiv = document.getElementById('emotion-emoji');
+        const loaderOverlay = document.getElementById('intro-loader');
+
+        const emojiMap = {
+            'Happy': '😊', 'Sad': '😢', 'Angry': '😡', 'Fear': '😨',
+            'Disgust': '🤢', 'Surprise': '😲', 'Neutral': '😐',
+            'No Face Detected': '🔍', 'Processing Error': '⚠️'
+        };
+
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
+                .then(stream => { video.srcObject = stream; })
+                .catch(err => {
+                    console.error("Camera access error:", err);
+                    resultDiv.innerText = "Camera Blocked";
+                    emojiDiv.innerText = '🔒';
+                    setTimeout(() => { loaderOverlay.classList.add('dissolve'); }, 1200);
+                });
+        }
+
+        video.addEventListener('loadedmetadata', () => {
+            setTimeout(() => { loaderOverlay.classList.add('dissolve'); }, 2400);
+        });
+
+        setInterval(() => {
+            if (video.videoWidth === 0 || video.videoHeight === 0) return;
+
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+
+            fetch('/predict', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: dataUrl })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.emotion && resultDiv.innerText !== data.emotion) {
+                    emojiDiv.classList.remove('emoji-bounce');
+                    void emojiDiv.offsetWidth; 
+                    emojiDiv.classList.add('emoji-bounce');
+                    
+                    resultDiv.innerText = data.emotion;
+                    emojiDiv.innerText = emojiMap[data.emotion] || '🤔';
+                    
+                    if (data.emotion === 'Happy') {
+                        resultDiv.style.color = '#10b981';
+                        resultDiv.style.textShadow = '0 0 15px rgba(16, 185, 129, 0.3)';
+                    } else if (data.emotion === 'Angry' || data.emotion === 'Fear') {
+                        resultDiv.style.color = '#ef4444';
+                        resultDiv.style.textShadow = '0 0 15px rgba(239, 68, 68, 0.3)';
+                    } else if (data.emotion === 'Sad') {
+                        resultDiv.style.color = '#3b82f6';
+                        resultDiv.style.textShadow = '0 0 15px rgba(59, 130, 246, 0.3)';
+                    } else if (data.emotion === 'Surprise') {
+                        resultDiv.style.color = '#f59e0b';
+                        resultDiv.style.textShadow = '0 0 15px rgba(245, 158, 11, 0.3)';
+                    } else {
+                        resultDiv.style.color = '#1e293b';
+                        resultDiv.style.textShadow = 'none';
+                    }
+                }
+            })
+            .catch(err => console.error("API sync dropout:", err));
+        }, 800); 
+    </script>
+</body>
+</html>

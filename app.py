@@ -1,12 +1,12 @@
 import os
 import sys
-
-# CRITICAL WINDOWS FIX: Disable heavy hardware optimizations and logs before importing TF
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-
+import threading
 import base64
 import numpy as np
+
+# CRITICAL WINDOWS/CLOUD FIX: Disable heavy hardware optimizations and logs before importing TF
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 print("=============================================")
 print("System initialization: Testing core libraries...")
@@ -37,8 +37,8 @@ try:
     print("Successfully loaded 'emotion_model.h5'")
 except Exception as e:
     print(f"CRITICAL ERROR: Could not load model file: {e}")
-    print("Make sure your downloaded 'emotion_model.h5' is in this exact folder.")
 
+model_lock = threading.Lock()  
 face_haar_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
 # FER-2013 target emotion categories
@@ -51,7 +51,7 @@ def index():
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    """Receives webcam frame, runs face detection, predicts emotion"""
+    """Receives webcam frame, runs face detection, predicts emotion safely"""
     try:
         data = request.json['image']
         
@@ -65,8 +65,8 @@ def predict():
         faces_detected = face_haar_cascade.detectMultiScale(gray_img, 1.1, 4)
         
         for (x, y, w, h) in faces_detected:
-            # Crop out the face region
-            roi_gray = gray_img[y:y+w, x:x+h]
+            # 🔧 FIX: Correctly slice [y:y+h, x:x+w] for accurate facial region bounding boxes
+            roi_gray = gray_img[y:y+h, x:x+w]
             roi_gray = cv2.resize(roi_gray, (48, 48))
             
             # Normalize pixel signals down to 0-1
@@ -74,10 +74,11 @@ def predict():
             img_pixels = np.expand_dims(img_pixels, axis=0)
             img_pixels = np.expand_dims(img_pixels, axis=-1)
             
-            # Forward pass calculations through the CNN
-            predictions = model.predict(img_pixels, verbose=0)
+            # 🔒 Thread safety lock for concurrent requests across multiple separate user devices
+            with model_lock:
+                predictions = model.predict(img_pixels, verbose=0)
+                
             max_index = int(np.argmax(predictions[0]))
-            
             return jsonify({"emotion": EMOTIONS[max_index]})
             
         return jsonify({"emotion": "No Face Detected"})
@@ -85,15 +86,15 @@ def predict():
     except Exception as e:
         return jsonify({"emotion": "Processing Error", "details": str(e)})
 
-# Force engine boot execution directly
-import os
-
-import os
-
 if __name__ == '__main__':
     # Force Render's environment port dynamically, fallback to 5000 for local testing
     port = int(os.environ.get("PORT", 5000))
     
-    # CRITICAL: host MUST be '0.0.0.0' for cloud deployment
-    # Turned off debug and reloader to prevent double-instantiating your heavy h5 model
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    # ⚡ THREADED PIPELINES: Splits concurrent web traffic requests seamlessly
+    app.run(
+        host='0.0.0.0', 
+        port=port, 
+        debug=False, 
+        use_reloader=False, 
+        threaded=True
+    )

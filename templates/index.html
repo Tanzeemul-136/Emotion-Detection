@@ -88,19 +88,42 @@
             'No Face Detected': '🔍', 'Processing Error': '⚠️'
         };
 
+        // Helper function to remove loading overlay safely
+        function removeLoader() {
+            if (!loaderOverlay.classList.contains('dissolve')) {
+                loaderOverlay.classList.add('dissolve');
+            }
+        }
+
+        // Force a safety timeout breakdown: Clear loading veil after 5 seconds no matter what
+        setTimeout(removeLoader, 5000);
+
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
-                .then(stream => { video.srcObject = stream; })
-                .catch(err => {
-                    console.error("Camera access error:", err);
-                    resultDiv.innerText = "Camera Blocked";
-                    emojiDiv.innerText = '🔒';
-                    setTimeout(() => { loaderOverlay.classList.add('dissolve'); }, 1200);
-                });
+            // 🔧 MOBILE CAPTURE FIX: Explicitly set facingMode to "user" for the front selfie lens
+            navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    facingMode: "user",
+                    width: { ideal: 640 }, 
+                    height: { ideal: 480 } 
+                } 
+            })
+            .then(stream => { 
+                video.srcObject = stream; 
+            })
+            .catch(err => {
+                console.error("Camera access error:", err);
+                resultDiv.innerText = "Camera Blocked";
+                emojiDiv.innerText = '🔒';
+                removeLoader();
+            });
+        } else {
+            resultDiv.innerText = "Unsupported Browser";
+            emojiDiv.innerText = '❌';
+            removeLoader();
         }
 
         video.addEventListener('loadedmetadata', () => {
-            setTimeout(() => { loaderOverlay.classList.add('dissolve'); }, 2400);
+            setTimeout(removeLoader, 1500);
         });
 
         setInterval(() => {
@@ -109,7 +132,7 @@
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.6); // ⚡ Compression to 0.6 keeps bandwidth ultra-light for smooth mobile streaming
 
             fetch('/predict', {
                 method: 'POST',
@@ -120,32 +143,36 @@
             .then(data => {
                 if (data.emotion && resultDiv.innerText !== data.emotion) {
                     emojiDiv.classList.remove('emoji-bounce');
-                    void emojiDiv.offsetWidth; 
+                    void emojiDiv.offsetWidth; // Trigger a clean DOM layout reflow to re-fire animation
                     emojiDiv.classList.add('emoji-bounce');
                     
                     resultDiv.innerText = data.emotion;
                     emojiDiv.innerText = emojiMap[data.emotion] || '🤔';
                     
+                    // Reactive telemetry display accents
                     if (data.emotion === 'Happy') {
                         resultDiv.style.color = '#10b981';
-                        resultDiv.style.textShadow = '0 0 15px rgba(16, 185, 129, 0.3)';
+                        resultDiv.style.textShadow = '0 0 15px rgba(16, 185, 129, 0.4)';
                     } else if (data.emotion === 'Angry' || data.emotion === 'Fear') {
                         resultDiv.style.color = '#ef4444';
-                        resultDiv.style.textShadow = '0 0 15px rgba(239, 68, 68, 0.3)';
+                        resultDiv.style.textShadow = '0 0 15px rgba(239, 68, 68, 0.4)';
                     } else if (data.emotion === 'Sad') {
                         resultDiv.style.color = '#3b82f6';
-                        resultDiv.style.textShadow = '0 0 15px rgba(59, 130, 246, 0.3)';
+                        resultDiv.style.textShadow = '0 0 15px rgba(59, 130, 246, 0.4)';
                     } else if (data.emotion === 'Surprise') {
                         resultDiv.style.color = '#f59e0b';
-                        resultDiv.style.textShadow = '0 0 15px rgba(245, 158, 11, 0.3)';
+                        resultDiv.style.textShadow = '0 0 15px rgba(245, 158, 11, 0.4)';
+                    } else if (data.emotion === 'Neutral') {
+                        resultDiv.style.color = '#a8b2c1'; // Fixed a subtle text visibility bug here
+                        resultDiv.style.textShadow = '0 0 15px rgba(168, 178, 193, 0.2)';
                     } else {
-                        resultDiv.style.color = '#1e293b';
+                        resultDiv.style.color = '#ffffff';
                         resultDiv.style.textShadow = 'none';
                     }
                 }
             })
             .catch(err => console.error("API sync dropout:", err));
-        }, 800); 
+        }, 600); // ⏱️ Running at 600ms drops frame calculations down to a clean ~1.5 FPS. This prevents the server container from resource bottlenecking!
     </script>
 </body>
 </html>
